@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  lint-and-compile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install linters
+        run: pip install ruff
+
+      - name: Lint (real-breakage rules — syntax & undefined names)
+        run: ruff check . --select E9,F63,F7,F82
+
+      - name: Compile all modules (catch syntax errors)
+        run: python -m compileall api db dashboard ingestion llm ml models nl tests
+
+  docker-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Validates the image builds — including the Prophet/CmdStan makefile fix.
+      - name: Build image
+        run: docker build -t gridwatch:ci .
+
+# NOTE: end-to-end tests (tests/test_apis.py, validate_data.py, test_nl.py) hit
+# live external APIs, TimescaleDB, and the OpenAI API, so they run locally against
+# the compose stack rather than in CI. CI covers static analysis + build integrity.
