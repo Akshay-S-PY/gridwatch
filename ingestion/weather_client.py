@@ -36,6 +36,7 @@ class WeatherClient:
             "latitude":  self.lat,
             "longitude": self.lon,
             "hourly":    "wind_speed_10m,shortwave_radiation,temperature_2m",
+            "wind_speed_unit": "ms",   # default is km/h; we store/label m/s
             "forecast_days": max(1, hours_ahead // 24 + 1),
             "timezone":  "UTC",
         })
@@ -57,6 +58,7 @@ class WeatherClient:
             "start_date": start_date.isoformat(),
             "end_date":   end_date.isoformat(),
             "hourly":     "wind_speed_10m,shortwave_radiation,temperature_2m",
+            "wind_speed_unit": "ms",   # default is km/h; we store/label m/s
             "timezone":   "UTC",
         })
         resp.raise_for_status()
