@@ -43,6 +43,20 @@ REGION_CENTROIDS = {
 
 st.set_page_config(page_title="GridWatch", page_icon="⚡", layout="wide")
 
+st.markdown("""
+<style>
+.block-container {padding-top: 2.2rem; max-width: 1320px;}
+[data-testid="stMetric"] {
+    background: #f8fafc; border: 1px solid #e6eaf0; border-radius: 12px; padding: 14px 18px;
+}
+[data-testid="stMetricLabel"] p {font-size: 0.82rem; color: #64748b;}
+.gw-sub {color:#475569; font-size:1.0rem; margin-top:-8px;}
+.gw-banner {border-radius:12px; padding:14px 18px; margin:10px 0 6px 0; font-size:1.03rem;}
+.gw-hint {color:#64748b; font-size:0.88rem; margin:2px 0 6px 0;}
+h2, h3 {letter-spacing:-0.01em;}
+</style>
+""", unsafe_allow_html=True)
+
 
 # ── data access ───────────────────────────────────────────────────────────────
 @st.cache_data(ttl=1800)
@@ -63,11 +77,31 @@ def index_emoji(index: str) -> str:
     }.get((index or "").lower(), "⚪")
 
 
+# ── sidebar: what this is & how it works ─────────────────────────────────────
+with st.sidebar:
+    st.markdown("### ⚡ GridWatch")
+    st.markdown(
+        "Live UK electricity-grid intelligence. Every **30 minutes** it ingests "
+        "carbon-intensity, generation-mix and weather data, then layers ML on top."
+    )
+    st.markdown(
+        "**How it works**\n\n"
+        "1. Ingest grid + weather data (30-min cadence)\n"
+        "2. Detect anomalies (Isolation Forest) & forecast 2h ahead (Prophet)\n"
+        "3. Serve it here — and via natural-language chat"
+    )
+    st.info("💬 Ask questions in plain English on the **Ask GridWatch** page →")
+    st.caption("Sources: carbonintensity.org.uk · open-meteo.com")
+
 # ── header ────────────────────────────────────────────────────────────────────
 left, right = st.columns([3, 1])
 with left:
     st.title("⚡ GridWatch")
-    st.caption("UK National Grid — live carbon intensity, generation mix, anomalies & forecasts")
+    st.markdown(
+        "<div class='gw-sub'>Live UK National Grid intelligence — carbon intensity, "
+        "generation mix, ML anomaly detection &amp; 2-hour forecasts, refreshed every 30 minutes.</div>",
+        unsafe_allow_html=True,
+    )
 with right:
     if st.button("🔄 Refresh now", use_container_width=True):
         st.cache_data.clear()
@@ -83,19 +117,41 @@ if not latest:
         st.caption(err)
     st.stop()
 
-# ── KPI cards ─────────────────────────────────────────────────────────────────
-mean_30d = stats.get("mean")
 carbon = latest.get("intensity_actual") or latest.get("intensity_forecast")
-delta_txt = None
-if mean_30d and carbon is not None:
-    diff = carbon - mean_30d
-    delta_txt = f"{diff:+.0f} vs 30-day avg"
+mean_30d = stats.get("mean")
+index = (latest.get("intensity_index") or "").lower()
+ren = latest.get("renewable_perc", 0) or 0
+foss = latest.get("fossil_perc", 0) or 0
 
+# ── plain-English status banner (colour shows how clean the grid is now) ──────
+BANNER = {
+    "very low":  ("#dcfce7", "#166534", "🟢", "The grid is very clean right now"),
+    "low":       ("#dcfce7", "#166534", "🟢", "The grid is clean right now"),
+    "moderate":  ("#fef9c3", "#854d0e", "🟡", "The grid is moderately clean right now"),
+    "high":      ("#ffedd5", "#9a3412", "🟠", "The grid is fairly carbon-intensive right now"),
+    "very high": ("#fee2e2", "#991b1b", "🔴", "The grid is very carbon-intensive right now"),
+}
+bg, fg, dot, phrase = BANNER.get(index, ("#f1f5f9", "#334155", "⚪", "Live grid status"))
+st.markdown(
+    f"<div class='gw-banner' style='background:{bg};color:{fg};'>"
+    f"{dot} <b>{phrase}</b> — {carbon} gCO₂/kWh ({index or 'n/a'}). "
+    f"Renewables are supplying <b>{ren:.0f}%</b> of generation, fossil fuels <b>{foss:.0f}%</b>."
+    f"</div>",
+    unsafe_allow_html=True,
+)
+
+# ── KPI cards ─────────────────────────────────────────────────────────────────
+delta_txt = f"{carbon - mean_30d:+.0f} vs 30-day avg" if (mean_30d and carbon is not None) else None
 k1, k2, k3, k4 = st.columns(4)
 k1.metric("Carbon intensity", f"{carbon} gCO₂/kWh", delta_txt, delta_color="inverse")
 k2.metric("Intensity index", f"{index_emoji(latest.get('intensity_index'))} {latest.get('intensity_index','—').title()}")
-k3.metric("Renewable", f"{latest.get('renewable_perc', 0):.0f}%")
-k4.metric("Fossil", f"{latest.get('fossil_perc', 0):.0f}%")
+k3.metric("Renewable share", f"{ren:.0f}%")
+k4.metric("Fossil share", f"{foss:.0f}%")
+st.markdown(
+    "<div class='gw-hint'>Carbon intensity is grams of CO₂ per kWh of electricity — lower is cleaner. "
+    "The index runs very low → very high; the delta compares now against the 30-day average.</div>",
+    unsafe_allow_html=True,
+)
 
 st.divider()
 
@@ -104,6 +160,9 @@ col_mix, col_ts = st.columns([1, 2])
 
 with col_mix:
     st.subheader("Generation mix")
+    st.markdown("<div class='gw-hint'>What's generating GB electricity this half-hour. "
+                "Wind, solar, hydro &amp; biomass are low-carbon; gas is the main fossil source.</div>",
+                unsafe_allow_html=True)
     fuels = ["gas", "coal", "nuclear", "wind", "solar", "hydro", "biomass", "imports", "other"]
     mix = {f: latest.get(f"{f}_perc") or 0 for f in fuels}
     mix = {f: v for f, v in mix.items() if v > 0}
@@ -117,6 +176,9 @@ with col_mix:
 
 with col_ts:
     st.subheader("Carbon intensity — last 24h")
+    st.markdown("<div class='gw-hint'>Actual vs forecast intensity over 24 hours. "
+                "✕ marks anomalies the ML flagged — it usually dips midday (solar) and climbs into the evening peak.</div>",
+                unsafe_allow_html=True)
     ts = api_get("/api/grid/timeseries?hours=24") or {"data": []}
     tsdf = pd.DataFrame(ts["data"])
     fig = go.Figure()
@@ -150,6 +212,8 @@ col_fc, col_map = st.columns([1, 1])
 
 with col_fc:
     st.subheader("Carbon intensity — 2h forecast")
+    st.markdown("<div class='gw-hint'>Our Prophet model's projection for the next 2 hours. "
+                "The shaded band is the 80% confidence interval.</div>", unsafe_allow_html=True)
     fc = (api_get("/api/grid/forecast?signal=intensity_actual") or {}).get("data", [])
     fcdf = pd.DataFrame(fc)
     figf = go.Figure()
@@ -176,6 +240,9 @@ with col_fc:
 
 with col_map:
     st.subheader("Regional carbon intensity")
+    st.markdown("<div class='gw-hint'>Forecast intensity across the 14 GB distribution regions. "
+                "Scotland is usually cleanest (wind); southern regions can lean on gas.</div>",
+                unsafe_allow_html=True)
     regions = (api_get("/api/regional/snapshot") or {}).get("regions", [])
     rows = []
     for r in regions:
@@ -221,6 +288,8 @@ col_cw, col_al = st.columns([1, 1])
 
 with col_cw:
     st.subheader("🔋 Clean windows — best times to shift load")
+    st.markdown("<div class='gw-hint'>The lowest-carbon upcoming half-hours — ideal for shifting "
+                "flexible load like EV charging or batch compute.</div>", unsafe_allow_html=True)
     windows = (api_get("/api/grid/clean-windows?hours_ahead=24") or {}).get("windows", [])
     if windows:
         wdf = pd.DataFrame(windows)
@@ -236,6 +305,8 @@ with col_cw:
 
 with col_al:
     st.subheader("🚨 Recent anomalies")
+    st.markdown("<div class='gw-hint'>Unusual readings flagged by per-signal Isolation Forest "
+                "models, graded low → critical.</div>", unsafe_allow_html=True)
     anoms = (api_get("/api/anomalies?limit=15") or {}).get("anomalies", [])
     if anoms:
         adf = pd.DataFrame(anoms)

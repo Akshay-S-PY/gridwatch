@@ -16,6 +16,14 @@ API_BASE = os.getenv("API_BASE_URL", "http://api:8000")
 st.set_page_config(page_title="Ask GridWatch", page_icon="💬", layout="wide")
 st.title("💬 Ask GridWatch")
 st.caption("Ask about carbon intensity, generation mix, regions, anomalies or forecasts — in plain English.")
+with st.expander("How this works", expanded=False):
+    st.markdown(
+        "Your question is turned into a SQL query against 90+ days of live grid data, "
+        "**executed read-only** (it can never modify anything), and the result is explained "
+        "back in plain English. Similar past anomalies are retrieved for context.\n\n"
+        "Try: *“Why did carbon intensity spike yesterday evening?”* · "
+        "*“Which region is cleanest right now?”* · *“When was renewable generation highest this week?”*"
+    )
 
 EXAMPLES = [
     "Why did carbon intensity change this evening?",
