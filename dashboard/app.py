@@ -211,6 +211,7 @@ with right:
         st.rerun()
     st.caption(f"Loaded {datetime.now(timezone.utc):%Y-%m-%d %H:%M UTC}")
 
+st.session_state["_errors"] = []   # reset per run so diagnostics reflect this render
 latest = api_get("/api/grid/latest")
 stats = (api_get("/api/grid/stats?days=30") or {}).get("stats", {})
 
@@ -474,6 +475,14 @@ with col_al:
                                 ["critical", "high", "medium", "low"] if s in counts))
     else:
         st.success("No anomalies flagged.")
+
+# ── diagnostics: surface any swallowed API errors ────────────────────────────
+_errs = st.session_state.get("_errors", [])
+if _errs:
+    with st.expander(f"⚠️ {len(_errs)} data feed(s) unavailable — diagnostics"):
+        st.caption(f"Dashboard is calling the API at `{API_BASE}`. Failed calls:")
+        for err in _errs:
+            st.code(err, language="text")
 
 # ── auto-refresh every 30 min ────────────────────────────────────────────────
 st.markdown(
