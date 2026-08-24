@@ -328,9 +328,12 @@ col_fc, col_map = st.columns([1, 1])
 
 with col_fc:
     st.subheader("Carbon intensity — 2h forecast")
-    st.markdown("<div class='gw-hint'>Our Prophet model's projection for the next 2 hours. "
-                "The shaded band is the 80% confidence interval.</div>", unsafe_allow_html=True)
-    fc = (api_get("/api/grid/forecast?signal=intensity_actual") or {}).get("data", [])
+    st.markdown("<div class='gw-hint'>Two forward projections: the official National Grid "
+                "forecast (green) and our own Prophet model (orange), which uses forecasted "
+                "wind &amp; solar as inputs. The shaded band is Prophet's 80% confidence "
+                "interval.</div>", unsafe_allow_html=True)
+    fc = (api_get("/api/grid/forecast?signal=intensity_actual&model=prophet") or {}).get("data", [])
+    api_fc = (api_get("/api/grid/forecast?signal=carbon_intensity&model=carbon_api") or {}).get("data", [])
     fcdf = pd.DataFrame(fc)
     figf = go.Figure()
     # recent actuals for context (last ~6h)
@@ -345,11 +348,18 @@ with col_fc:
             x=list(fcdf["timestamp"]) + list(fcdf["timestamp"][::-1]),
             y=list(fcdf["upper_bound"]) + list(fcdf["lower_bound"][::-1]),
             fill="toself", fillcolor="rgba(255,127,14,0.2)",
-            line=dict(color="rgba(255,255,255,0)"), name="80% interval", hoverinfo="skip",
+            line=dict(color="rgba(255,255,255,0)"), name="Prophet 80% interval", hoverinfo="skip",
         ))
         figf.add_trace(go.Scatter(x=fcdf["timestamp"], y=fcdf["forecast_value"],
-                                  name="Prophet forecast",
+                                  name="Prophet (ours)",
                                   line=dict(color="#ff7f0e", width=2, dash="dash")))
+    # official National Grid forward forecast — the accuracy benchmark
+    apidf = pd.DataFrame(api_fc)
+    if not apidf.empty:
+        apidf["timestamp"] = pd.to_datetime(apidf["timestamp"])
+        figf.add_trace(go.Scatter(x=apidf["timestamp"], y=apidf["forecast_value"],
+                                  name="Official (National Grid)",
+                                  line=dict(color="#10b981", width=2)))
     figf.update_layout(height=340, margin=dict(t=10, b=10, l=10, r=10),
                        yaxis_title="gCO₂/kWh", legend=dict(orientation="h", y=1.1))
     st.plotly_chart(figf, use_container_width=True)

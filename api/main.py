@@ -164,14 +164,17 @@ def clean_windows(
 @app.get("/api/grid/forecast")
 def grid_forecast(
     signal: str = Query(default="intensity_actual",
-                        description="Signal to forecast (Prophet output)"),
+                        description="Signal to forecast"),
+    model: str = Query(default="prophet",
+                       description="'prophet' (our 2h model) or 'carbon_api' (official forward forecast)"),
 ):
     """
-    Upcoming 2-hour Prophet forecast for a signal, with confidence bounds.
-    Used for the dashboard forecast chart.
+    Upcoming forecast for a signal, with confidence bounds. `model=prophet` is our
+    own 2h Prophet model; `model=carbon_api` (with signal=carbon_intensity) is the
+    Carbon Intensity API's official forward forecast, shown as an accuracy benchmark.
     """
-    data = get_forecast(signal=signal, model_version="prophet")
-    return {"signal": signal, "count": len(data), "data": data}
+    data = get_forecast(signal=signal, model_version=model)
+    return {"signal": signal, "model": model, "count": len(data), "data": data}
 
 
 # ─── Anomaly endpoints ────────────────────────────────────────────────────────
