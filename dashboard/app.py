@@ -77,6 +77,70 @@ def index_emoji(index: str) -> str:
     }.get((index or "").lower(), "⚪")
 
 
+# ── gridwatch-style dial gauges ───────────────────────────────────────────────
+# Coloured arcs matching the carbon-intensity index bands (a nod to the classic
+# gridwatch.co.uk analog meters, modernised).
+INTENSITY_STEPS = [
+    {"range": [0, 45],    "color": "#a7f3d0"},   # very low
+    {"range": [45, 130],  "color": "#d9f99d"},   # low
+    {"range": [130, 210], "color": "#fde68a"},   # moderate
+    {"range": [210, 270], "color": "#fdba74"},   # high
+    {"range": [270, 350], "color": "#fca5a5"},   # very high
+]
+RENEWABLE_STEPS = [
+    {"range": [0, 40],   "color": "#fee2e2"},
+    {"range": [40, 70],  "color": "#fef9c3"},
+    {"range": [70, 100], "color": "#dcfce7"},
+]
+FOSSIL_STEPS = [
+    {"range": [0, 25],   "color": "#dcfce7"},
+    {"range": [25, 50],  "color": "#fef9c3"},
+    {"range": [50, 100], "color": "#fee2e2"},
+]
+
+
+def _gauge_layout(fig):
+    fig.update_layout(height=250, margin=dict(t=54, b=8, l=28, r=28),
+                      paper_bgcolor="rgba(0,0,0,0)")
+    return fig
+
+
+def gauge_intensity(value, ref):
+    """Carbon-intensity dial with coloured zones + a needle, and a delta vs the 30-day average."""
+    has_ref = ref is not None
+    ind = dict(
+        mode="gauge+number+delta" if has_ref else "gauge+number",
+        value=value,
+        number={"suffix": " gCO₂"},
+        title={"text": "Carbon intensity", "font": {"size": 15}},
+        gauge={
+            "axis": {"range": [0, 350], "tickwidth": 1, "tickcolor": "#94a3b8"},
+            "bar": {"color": "rgba(15,23,42,0.85)", "thickness": 0.22},
+            "steps": INTENSITY_STEPS,
+            "threshold": {"line": {"color": "#0f172a", "width": 4}, "thickness": 0.8, "value": value},
+        },
+    )
+    if has_ref:
+        ind["delta"] = {"reference": round(ref),
+                        "increasing": {"color": "#dc2626"},   # dirtier than avg = bad
+                        "decreasing": {"color": "#16a34a"}}   # cleaner than avg = good
+    return _gauge_layout(go.Figure(go.Indicator(**ind)))
+
+
+def gauge_pct(title, value, steps, barcolor):
+    return _gauge_layout(go.Figure(go.Indicator(
+        mode="gauge+number",
+        value=value,
+        number={"suffix": "%"},
+        title={"text": title, "font": {"size": 15}},
+        gauge={
+            "axis": {"range": [0, 100], "tickcolor": "#94a3b8"},
+            "bar": {"color": barcolor, "thickness": 0.22},
+            "steps": steps,
+        },
+    )))
+
+
 # ── sidebar: what this is & how it works ─────────────────────────────────────
 with st.sidebar:
     st.markdown("### ⚡ GridWatch")
@@ -140,16 +204,14 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# ── KPI cards ─────────────────────────────────────────────────────────────────
-delta_txt = f"{carbon - mean_30d:+.0f} vs 30-day avg" if (mean_30d and carbon is not None) else None
-k1, k2, k3, k4 = st.columns(4)
-k1.metric("Carbon intensity", f"{carbon} gCO₂/kWh", delta_txt, delta_color="inverse")
-k2.metric("Intensity index", f"{index_emoji(latest.get('intensity_index'))} {latest.get('intensity_index','—').title()}")
-k3.metric("Renewable share", f"{ren:.0f}%")
-k4.metric("Fossil share", f"{foss:.0f}%")
+# ── live dial gauges (gridwatch-style) ───────────────────────────────────────
+g1, g2, g3 = st.columns(3)
+g1.plotly_chart(gauge_intensity(carbon, mean_30d if mean_30d else None), use_container_width=True)
+g2.plotly_chart(gauge_pct("Renewable share", ren, RENEWABLE_STEPS, "#059669"), use_container_width=True)
+g3.plotly_chart(gauge_pct("Fossil share", foss, FOSSIL_STEPS, "#334155"), use_container_width=True)
 st.markdown(
-    "<div class='gw-hint'>Carbon intensity is grams of CO₂ per kWh of electricity — lower is cleaner. "
-    "The index runs very low → very high; the delta compares now against the 30-day average.</div>",
+    "<div class='gw-hint'>Live dials — carbon intensity in gCO₂/kWh (lower is cleaner; coloured arc = index "
+    "band, needle = now, delta = vs the 30-day average) and the renewable / fossil share of generation.</div>",
     unsafe_allow_html=True,
 )
 
