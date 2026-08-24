@@ -260,6 +260,34 @@ def get_forecast(signal: str = "intensity_actual", model_version: str = "prophet
         return [dict(r) for r in rows]
 
 
+def get_demand(hours: int = 24) -> dict:
+    """Latest national demand (INDO, MW) plus the recent trend — from Elexon/BMRS."""
+    sql = text("""
+        SELECT timestamp, demand_mw
+        FROM demand_readings
+        WHERE timestamp >= NOW() - INTERVAL ':hours hours'
+          AND demand_mw IS NOT NULL
+        ORDER BY timestamp ASC
+    """)
+    with SessionLocal() as session:
+        rows = [dict(r) for r in session.execute(sql, {"hours": hours}).mappings().fetchall()]
+    return {"latest": rows[-1] if rows else None, "count": len(rows), "data": rows}
+
+
+def get_frequency() -> dict:
+    """Most recent grid-frequency reading (Hz) — from Elexon/BMRS."""
+    sql = text("""
+        SELECT timestamp, frequency_hz
+        FROM frequency_readings
+        WHERE frequency_hz IS NOT NULL
+        ORDER BY timestamp DESC
+        LIMIT 1
+    """)
+    with SessionLocal() as session:
+        row = session.execute(sql).mappings().fetchone()
+    return dict(row) if row else {}
+
+
 def get_anomaly_history(limit: int = 20) -> list[dict]:
     """Recent anomaly flags — used by dashboard alert panel and NL query layer."""
     sql = text("""

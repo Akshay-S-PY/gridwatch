@@ -75,6 +75,20 @@ CREATE TABLE IF NOT EXISTS forecasts (
     created_at          TIMESTAMPTZ     DEFAULT NOW()
 );
 
+-- ─── Elexon/BMRS signals (frequency + national demand) ─────────────────────
+
+CREATE TABLE IF NOT EXISTS demand_readings (
+    timestamp           TIMESTAMPTZ     NOT NULL,   -- settlement period start
+    demand_mw           FLOAT,                      -- national demand (INDO), MW
+    created_at          TIMESTAMPTZ     DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS frequency_readings (
+    timestamp           TIMESTAMPTZ     NOT NULL,   -- reading time (snapshot per poll)
+    frequency_hz        FLOAT,                      -- grid frequency, Hz (~50)
+    created_at          TIMESTAMPTZ     DEFAULT NOW()
+);
+
 -- ─── Indexes ────────────────────────────────────────────────────────────────
 
 CREATE INDEX IF NOT EXISTS idx_grid_events_timestamp
@@ -100,6 +114,8 @@ SELECT create_hypertable('weather_readings','timestamp', if_not_exists => TRUE);
 SELECT create_hypertable('regional_readings','timestamp', if_not_exists => TRUE);
 SELECT create_hypertable('anomaly_flags',  'timestamp', if_not_exists => TRUE);
 SELECT create_hypertable('forecasts',      'timestamp', if_not_exists => TRUE);
+SELECT create_hypertable('demand_readings','timestamp', if_not_exists => TRUE);
+SELECT create_hypertable('frequency_readings','timestamp', if_not_exists => TRUE);
 """
 
 # Remove any pre-existing duplicates (from before unique indexes existed) so the
@@ -131,6 +147,39 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_forecasts_signal_timestamp_model
     ON forecasts (signal, timestamp, model_version);
 CREATE UNIQUE INDEX IF NOT EXISTS uq_anomaly_timestamp_signal
     ON anomaly_flags (timestamp, signal);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_demand_timestamp
+    ON demand_readings (timestamp);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_frequency_timestamp
+    ON frequency_readings (timestamp);
+"""
+
+# Time-series lifecycle policies (TimescaleDB background jobs):
+#   - Compress chunks older than 7 days on the append-only tables (~90% smaller).
+#     Safe because we only ever INSERT into recent (uncompressed) chunks. Not
+#     applied to `forecasts`, which is UPSERTed (compressed chunks are read-only).
+#   - Drop raw data older than 180 days on every table so the DB stays bounded.
+POLICY_SQL = """
+ALTER TABLE grid_events       SET (timescaledb.compress, timescaledb.compress_orderby = 'timestamp DESC');
+ALTER TABLE weather_readings  SET (timescaledb.compress, timescaledb.compress_orderby = 'timestamp DESC');
+ALTER TABLE regional_readings SET (timescaledb.compress, timescaledb.compress_segmentby = 'region_id', timescaledb.compress_orderby = 'timestamp DESC');
+ALTER TABLE anomaly_flags     SET (timescaledb.compress, timescaledb.compress_segmentby = 'signal', timescaledb.compress_orderby = 'timestamp DESC');
+ALTER TABLE demand_readings    SET (timescaledb.compress, timescaledb.compress_orderby = 'timestamp DESC');
+ALTER TABLE frequency_readings SET (timescaledb.compress, timescaledb.compress_orderby = 'timestamp DESC');
+
+SELECT add_compression_policy('grid_events',       INTERVAL '7 days', if_not_exists => TRUE);
+SELECT add_compression_policy('weather_readings',  INTERVAL '7 days', if_not_exists => TRUE);
+SELECT add_compression_policy('regional_readings', INTERVAL '7 days', if_not_exists => TRUE);
+SELECT add_compression_policy('anomaly_flags',     INTERVAL '7 days', if_not_exists => TRUE);
+SELECT add_compression_policy('demand_readings',   INTERVAL '7 days', if_not_exists => TRUE);
+SELECT add_compression_policy('frequency_readings',INTERVAL '7 days', if_not_exists => TRUE);
+
+SELECT add_retention_policy('grid_events',       INTERVAL '180 days', if_not_exists => TRUE);
+SELECT add_retention_policy('weather_readings',  INTERVAL '180 days', if_not_exists => TRUE);
+SELECT add_retention_policy('regional_readings', INTERVAL '180 days', if_not_exists => TRUE);
+SELECT add_retention_policy('anomaly_flags',     INTERVAL '180 days', if_not_exists => TRUE);
+SELECT add_retention_policy('forecasts',         INTERVAL '180 days', if_not_exists => TRUE);
+SELECT add_retention_policy('demand_readings',   INTERVAL '180 days', if_not_exists => TRUE);
+SELECT add_retention_policy('frequency_readings',INTERVAL '180 days', if_not_exists => TRUE);
 """
 
 def init_db() -> None:
@@ -155,6 +204,15 @@ def init_db() -> None:
         conn.execute(text(UNIQUE_INDEX_SQL))
         conn.commit()
         logger.info("Unique indexes ready.")
+
+        logger.info("Applying compression + retention policies...")
+        try:
+            conn.execute(text(POLICY_SQL))
+            conn.commit()
+            logger.info("Compression + retention policies ready.")
+        except Exception as e:
+            logger.warning(f"Policy setup skipped (TimescaleDB feature unavailable?): {e}")
+            conn.rollback()
 
     logger.info("Database initialisation complete.")
 

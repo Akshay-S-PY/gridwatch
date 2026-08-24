@@ -141,6 +141,45 @@ def gauge_pct(title, value, steps, barcolor):
     )))
 
 
+def gauge_frequency(value):
+    """The classic gridwatch dial — grid frequency, nominal 50 Hz ± 0.2."""
+    return _gauge_layout(go.Figure(go.Indicator(
+        mode="gauge+number",
+        value=value,
+        number={"suffix": " Hz", "valueformat": ".3f"},
+        title={"text": "Grid frequency", "font": {"size": 15}},
+        gauge={
+            "axis": {"range": [49.5, 50.5], "tickcolor": "#94a3b8"},
+            "bar": {"color": "rgba(15,23,42,0.85)", "thickness": 0.22},
+            "steps": [
+                {"range": [49.5, 49.8], "color": "#fca5a5"},
+                {"range": [49.8, 50.2], "color": "#a7f3d0"},   # healthy band
+                {"range": [50.2, 50.5], "color": "#fca5a5"},
+            ],
+            "threshold": {"line": {"color": "#0f172a", "width": 4}, "thickness": 0.8, "value": value},
+        },
+    )))
+
+
+def gauge_demand(value_mw):
+    """National demand in GW (GB runs ~18 GW overnight to ~45 GW winter peak)."""
+    return _gauge_layout(go.Figure(go.Indicator(
+        mode="gauge+number",
+        value=value_mw / 1000.0,
+        number={"suffix": " GW", "valueformat": ".1f"},
+        title={"text": "National demand", "font": {"size": 15}},
+        gauge={
+            "axis": {"range": [0, 50], "tickcolor": "#94a3b8"},
+            "bar": {"color": "#334155", "thickness": 0.22},
+            "steps": [
+                {"range": [0, 25],  "color": "#dcfce7"},
+                {"range": [25, 40], "color": "#fef9c3"},
+                {"range": [40, 50], "color": "#fee2e2"},
+            ],
+        },
+    )))
+
+
 # ── sidebar: what this is & how it works ─────────────────────────────────────
 with st.sidebar:
     st.markdown("### ⚡ GridWatch")
@@ -214,6 +253,21 @@ st.markdown(
     "band, needle = now, delta = vs the 30-day average) and the renewable / fossil share of generation.</div>",
     unsafe_allow_html=True,
 )
+
+# ── grid vitals: frequency + demand (Elexon/BMRS) ────────────────────────────
+freq = api_get("/api/grid/frequency") or {}
+demand_latest = (api_get("/api/grid/demand?hours=1") or {}).get("latest") or {}
+if freq.get("frequency_hz") is not None or demand_latest.get("demand_mw") is not None:
+    v1, v2, _v3 = st.columns(3)
+    if freq.get("frequency_hz") is not None:
+        v1.plotly_chart(gauge_frequency(freq["frequency_hz"]), use_container_width=True)
+    if demand_latest.get("demand_mw") is not None:
+        v2.plotly_chart(gauge_demand(demand_latest["demand_mw"]), use_container_width=True)
+    st.markdown(
+        "<div class='gw-hint'>Grid vitals from Elexon/BMRS — frequency must stay near 50 Hz "
+        "(the live balance of supply and demand), and total national demand in GW.</div>",
+        unsafe_allow_html=True,
+    )
 
 st.divider()
 

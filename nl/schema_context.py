@@ -39,6 +39,14 @@ TABLE anomaly_flags  -- ML (Isolation Forest) anomaly detections
   llm_explanation  TEXT
   acknowledged     BOOLEAN
 
+TABLE demand_readings  -- national electricity demand (Elexon/BMRS)
+  timestamp   TIMESTAMPTZ  -- settlement period start
+  demand_mw   FLOAT        -- national demand (INDO), megawatts (GB runs ~18000-45000 MW)
+
+TABLE frequency_readings  -- grid frequency (Elexon/BMRS), one snapshot per 30-min poll
+  timestamp     TIMESTAMPTZ  -- reading time
+  frequency_hz  FLOAT        -- grid frequency in Hz (nominal 50.0; healthy 49.8-50.2)
+
 TABLE forecasts  -- forward-looking forecasts
   timestamp       TIMESTAMPTZ
   signal          TEXT   -- 'carbon_intensity' (from carbon_api), or 'intensity_actual'/'wind_perc'/'solar_perc'/'renewable_perc' (prophet)
@@ -64,6 +72,10 @@ Domain knowledge for the GB electricity grid:
   timestamp >= NOW(), lowest forecast_value.
 - The latest actual grid state is the most recent grid_events row with intensity_actual
   IS NOT NULL (ORDER BY timestamp DESC LIMIT 1).
+- Demand is in MW (demand_readings.demand_mw); divide by 1000 for GW. Grid frequency
+  (frequency_readings.frequency_hz) should sit near 50 Hz; below 49.8 or above 50.2
+  indicates a supply/demand imbalance. For "current frequency"/"current demand" use
+  the most recent row of the respective table.
 """
 
 GUIDANCE = """

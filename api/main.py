@@ -18,6 +18,8 @@ from api.queries import (
     get_carbon_intensity_stats,
     get_renewable_windows,
     get_forecast,
+    get_demand,
+    get_frequency,
     get_anomaly_history,
     check_data_quality,
 )
@@ -183,6 +185,20 @@ def anomaly_history(
     """
     data = get_anomaly_history(limit=limit)
     return {"count": len(data), "anomalies": data}
+
+
+# ─── Elexon/BMRS: demand + frequency ──────────────────────────────────────────
+
+@app.get("/api/grid/demand")
+def grid_demand(hours: int = Query(default=24, ge=1, le=168)):
+    """Latest national demand (MW) + recent trend."""
+    return get_demand(hours=hours)
+
+
+@app.get("/api/grid/frequency")
+def grid_frequency():
+    """Most recent grid frequency (Hz)."""
+    return get_frequency()
 
 
 # ─── Natural-language query layer ─────────────────────────────────────────────

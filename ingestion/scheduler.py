@@ -15,8 +15,10 @@ from db.config import SessionLocal
 from db.setup import init_db
 from ingestion.carbon_client import CarbonIntensityClient
 from ingestion.weather_client import WeatherClient
+from ingestion.elexon_client import ElexonClient
 from ingestion.writer import (
-    write_grid_events, write_weather, write_regional, write_forecasts
+    write_grid_events, write_weather, write_regional, write_forecasts,
+    write_demand, write_frequency,
 )
 from ml.anomaly import AnomalyDetector
 from ml.detect import run_detection, seed_history_if_empty
@@ -38,6 +40,7 @@ def poll_live() -> None:
     logger.info("─── Live poll started ───")
     carbon = CarbonIntensityClient()
     weather = WeatherClient()
+    elexon = ElexonClient()
 
     try:
         # 1. National intensity + generation
@@ -108,11 +111,18 @@ def poll_live() -> None:
         ]
         write_forecasts(forecast_records)
 
+        # 5. Elexon/BMRS — national demand (INDO) + grid frequency, which the
+        #    Carbon Intensity API doesn't provide. Demand backfills ~30 days on
+        #    the first poll; frequency stores one snapshot per poll.
+        write_demand(elexon.get_demand())
+        write_frequency(elexon.get_latest_frequency())
+
     except Exception as e:
         logger.error(f"Live poll failed: {e}", exc_info=True)
     finally:
         carbon.close()
         weather.close()
+        elexon.close()
 
     # 5. ML inference on the freshly-ingested data (anomaly flags + 2h forecast).
     #    Isolated so a model/inference failure never breaks ingestion.

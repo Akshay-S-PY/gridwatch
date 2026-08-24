@@ -58,6 +58,37 @@ def write_weather(records: list[dict]) -> int:
         return result.rowcount
 
 
+def write_demand(records: list[dict]) -> int:
+    """National demand rows (Elexon INDO). Idempotent on timestamp."""
+    if not records:
+        return 0
+    sql = text("""
+        INSERT INTO demand_readings (timestamp, demand_mw)
+        VALUES (:timestamp, :demand_mw)
+        ON CONFLICT (timestamp) DO NOTHING
+    """)
+    with SessionLocal() as session:
+        result = session.execute(sql, records)
+        session.commit()
+        logger.info(f"Demand: inserted {result.rowcount}/{len(records)} rows")
+        return result.rowcount
+
+
+def write_frequency(record: dict) -> int:
+    """A single grid-frequency snapshot. Idempotent on timestamp."""
+    if not record:
+        return 0
+    sql = text("""
+        INSERT INTO frequency_readings (timestamp, frequency_hz)
+        VALUES (:timestamp, :frequency_hz)
+        ON CONFLICT (timestamp) DO NOTHING
+    """)
+    with SessionLocal() as session:
+        result = session.execute(sql, record)
+        session.commit()
+        return result.rowcount
+
+
 def write_anomaly_flags(records: list[dict]) -> int:
     """
     Insert anomaly flags. Idempotent on (timestamp, signal) so re-scoring the
