@@ -18,10 +18,30 @@ from datetime import datetime, timezone
 import httpx
 import pandas as pd
 import plotly.graph_objects as go
+import plotly.io as pio
 import streamlit as st
 
 API_BASE = os.getenv("API_BASE_URL", "http://api:8000")
 REFRESH_MS = 30 * 60 * 1000  # 30 minutes
+
+# ── shared Plotly look so every chart reads as one system ─────────────────────
+_FONT = "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+pio.templates["gridwatch"] = go.layout.Template(layout=dict(
+    font=dict(family=_FONT, color="#334155", size=13),
+    paper_bgcolor="rgba(0,0,0,0)",
+    plot_bgcolor="rgba(0,0,0,0)",
+    colorway=["#059669", "#0ea5e9", "#f59e0b", "#6366f1", "#ef4444",
+              "#14b8a6", "#8b5cf6", "#64748b", "#ec4899"],
+    xaxis=dict(gridcolor="rgba(148,163,184,.16)", zeroline=False,
+               linecolor="rgba(148,163,184,.35)", ticks="outside",
+               tickcolor="rgba(148,163,184,.35)"),
+    yaxis=dict(gridcolor="rgba(148,163,184,.16)", zeroline=False,
+               linecolor="rgba(148,163,184,.35)"),
+    legend=dict(font=dict(size=12), bgcolor="rgba(0,0,0,0)"),
+    hoverlabel=dict(font=dict(family=_FONT, size=12, color="#f8fafc"),
+                    bgcolor="#0f172a", bordercolor="rgba(0,0,0,0)"),
+))
+pio.templates.default = "plotly_white+gridwatch"
 
 SEVERITY_COLORS = {
     "critical": "#d62728",
@@ -45,15 +65,86 @@ st.set_page_config(page_title="GridWatch", page_icon="⚡", layout="wide")
 
 st.markdown("""
 <style>
-.block-container {padding-top: 2.2rem; max-width: 1320px;}
-[data-testid="stMetric"] {
-    background: #f8fafc; border: 1px solid #e6eaf0; border-radius: 12px; padding: 14px 18px;
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+:root {
+  --gw-surface:#ffffff; --gw-border:#e8edf3; --gw-text:#0f172a; --gw-subtle:#64748b;
+  --gw-emerald:#059669;
+  --gw-shadow:0 1px 2px rgba(15,23,42,.04), 0 6px 20px rgba(15,23,42,.05);
+  --gw-shadow-hover:0 8px 28px rgba(15,23,42,.11);
 }
-[data-testid="stMetricLabel"] p {font-size: 0.82rem; color: #64748b;}
-.gw-sub {color:#475569; font-size:1.0rem; margin-top:-8px;}
-.gw-banner {border-radius:12px; padding:14px 18px; margin:10px 0 6px 0; font-size:1.03rem;}
-.gw-hint {color:#64748b; font-size:0.88rem; margin:2px 0 6px 0;}
-h2, h3 {letter-spacing:-0.01em;}
+
+html, body, .stApp, [data-testid="stAppViewContainer"], [class*="css"] {
+  font-family:'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+/* soft tinted canvas */
+.stApp {
+  background:
+    radial-gradient(1200px 520px at 100% -12%, #ecfdf5 0%, rgba(236,253,245,0) 55%),
+    radial-gradient(1000px 480px at -8% -12%, #eef4ff 0%, rgba(238,244,255,0) 52%),
+    #fbfcfe;
+}
+.block-container {padding-top:2.4rem; padding-bottom:3rem; max-width:1340px;}
+
+/* headings */
+h1 {
+  font-weight:800; letter-spacing:-.03em; font-size:2.5rem; line-height:1.1;
+  background:linear-gradient(92deg, #0f172a 8%, #059669 130%);
+  -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent;
+}
+h2 {font-weight:700; letter-spacing:-.02em;}
+h3 {font-weight:650; letter-spacing:-.015em; color:var(--gw-text);}
+
+/* metric cards */
+[data-testid="stMetric"] {
+  background:var(--gw-surface); border:1px solid var(--gw-border); border-radius:16px;
+  padding:16px 20px; box-shadow:var(--gw-shadow);
+  transition:transform .16s ease, box-shadow .16s ease;
+}
+[data-testid="stMetric"]:hover {transform:translateY(-2px); box-shadow:var(--gw-shadow-hover);}
+[data-testid="stMetricLabel"] p {
+  font-size:.78rem; font-weight:600; color:var(--gw-subtle);
+  text-transform:uppercase; letter-spacing:.05em;
+}
+[data-testid="stMetricValue"] {font-weight:700; letter-spacing:-.02em;}
+
+/* every chart / table becomes an elevated tile */
+[data-testid="stFullScreenFrame"] {
+  background:var(--gw-surface); border:1px solid var(--gw-border); border-radius:16px;
+  padding:12px 14px 6px; box-shadow:var(--gw-shadow);
+  transition:box-shadow .16s ease, transform .16s ease;
+}
+[data-testid="stFullScreenFrame"]:hover {box-shadow:var(--gw-shadow-hover); transform:translateY(-2px);}
+
+/* text helpers */
+.gw-sub {color:var(--gw-subtle); font-size:1.02rem; font-weight:450; margin-top:-4px; max-width:760px;}
+.gw-hint {color:var(--gw-subtle); font-size:.85rem; margin:8px 4px 2px; line-height:1.45;}
+
+/* status banner → glassy pill card */
+.gw-banner {
+  border-radius:16px; padding:16px 22px; margin:16px 0 10px; font-size:1.02rem;
+  border:1px solid rgba(15,23,42,.06); box-shadow:var(--gw-shadow);
+}
+
+/* buttons */
+.stButton > button {
+  border-radius:11px; font-weight:600; border:1px solid var(--gw-border);
+  transition:all .15s ease;
+}
+.stButton > button:hover {border-color:var(--gw-emerald); color:var(--gw-emerald); transform:translateY(-1px);}
+
+/* sidebar */
+[data-testid="stSidebar"] {
+  background:linear-gradient(180deg, #f7fafc 0%, #ffffff 70%);
+  border-right:1px solid var(--gw-border);
+}
+[data-testid="stSidebar"] .stMarkdown {font-size:.92rem;}
+
+/* tables + misc */
+[data-testid="stDataFrame"] {border-radius:14px; overflow:hidden; border:1px solid var(--gw-border);}
+hr {border-color:var(--gw-border) !important; margin:1.5rem 0 !important;}
+a {color:var(--gw-emerald);}
 </style>
 """, unsafe_allow_html=True)
 
@@ -100,7 +191,7 @@ FOSSIL_STEPS = [
 
 
 def _gauge_layout(fig):
-    fig.update_layout(height=250, margin=dict(t=54, b=8, l=28, r=28),
+    fig.update_layout(height=224, margin=dict(t=42, b=6, l=26, r=26),
                       paper_bgcolor="rgba(0,0,0,0)")
     return fig
 
