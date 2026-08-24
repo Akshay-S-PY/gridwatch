@@ -76,6 +76,19 @@ class Forecaster:
         return pd.DataFrame({"ds": pd.date_range(
             start=anchor_naive + pd.Timedelta(FREQ), periods=HORIZON_PERIODS, freq=FREQ)})
 
+    def _anchor_row(self, anchor_ts) -> pd.DataFrame:
+        anchor_naive = pd.Timestamp(anchor_ts).tz_convert("UTC").tz_localize(None)
+        return pd.DataFrame({"ds": [anchor_naive]})
+
+    @staticmethod
+    def _shift(fc: pd.DataFrame, offset: float) -> pd.DataFrame:
+        """Persistence-anchor: shift a seasonal forecast so it continues from the
+        last actual instead of snapping to the time-of-day mean. At a 2h horizon the
+        current value carries most of the signal; Prophet supplies the *shape*."""
+        for col in ("yhat", "yhat_lower", "yhat_upper"):
+            fc[col] = fc[col] + offset
+        return fc
+
     def _rows(self, fc, signal) -> list[dict]:
         out = []
         for _, r in fc.iterrows():
@@ -89,24 +102,41 @@ class Forecaster:
             })
         return out
 
-    def predict(self, anchor_ts) -> list[dict]:
-        """Forecast the next 2 hours starting just after `anchor_ts` (tz-aware UTC)."""
+    def predict(self, anchor_ts, latest: dict | None = None) -> list[dict]:
+        """Forecast the next 2 hours starting just after `anchor_ts` (tz-aware UTC).
+
+        `latest` maps each signal to its most recent actual value. When supplied,
+        every signal's forecast is persistence-anchored to it, so the 2h line
+        continues smoothly from 'now' rather than jumping to the seasonal mean.
+        """
+        latest = latest or {}
         future = self._future_frame(anchor_ts)
+        anchor = self._anchor_row(anchor_ts)
         rows: list[dict] = []
 
         # forecast the univariate signals first (their yhat feeds the intensity model)
         reg_forecasts = {}
         for sig, model in self.models.items():
             fc = model.predict(future)
+            if latest.get(sig) is not None:
+                offset = float(latest[sig]) - float(model.predict(anchor)["yhat"].iloc[0])
+                fc = self._shift(fc, offset)
             reg_forecasts[sig] = fc["yhat"].values
             rows += self._rows(fc, sig)
 
-        # intensity, using the forecasted wind/solar as regressors
+        # intensity, using the (anchored) wind/solar forecasts as regressors
         if self.intensity_model is not None and all(r in reg_forecasts for r in INTENSITY_REGRESSORS):
             ifuture = future.copy()
             for reg in INTENSITY_REGRESSORS:
                 ifuture[reg] = reg_forecasts[reg]
-            rows += self._rows(self.intensity_model.predict(ifuture), "intensity_actual")
+            ifc = self.intensity_model.predict(ifuture)
+            if latest.get("intensity_actual") is not None:
+                arow = anchor.copy()
+                for reg in INTENSITY_REGRESSORS:            # anchor uses the actual regressors
+                    arow[reg] = float(latest.get(reg, reg_forecasts[reg][0]))
+                offset = float(latest["intensity_actual"]) - float(self.intensity_model.predict(arow)["yhat"].iloc[0])
+                ifc = self._shift(ifc, offset)
+            rows += self._rows(ifc, "intensity_actual")
         return rows
 
     def save(self, path: str = FORECAST_PATH) -> None:

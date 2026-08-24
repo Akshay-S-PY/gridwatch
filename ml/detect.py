@@ -76,9 +76,14 @@ def run_detection() -> None:
     if forecaster is None:
         logger.info("detect: no forecast model yet — train first")
     else:
-        rows = forecaster.predict(latest)
+        # last actuals, so the forecast is persistence-anchored to 'now'
+        latest_row = df[df["timestamp"] == latest].iloc[0]
+        latest_vals = {s: (float(latest_row[s]) if pd.notna(latest_row.get(s)) else None)
+                       for s in ("intensity_actual", "wind_perc", "solar_perc", "renewable_perc")
+                       if s in latest_row}
+        rows = forecaster.predict(latest, latest_vals)
         write_forecasts(rows)
-        logger.info(f"detect: wrote {len(rows)} forecast rows (2h ahead)")
+        logger.info(f"detect: wrote {len(rows)} forecast rows (2h ahead, anchored)")
 
 
 if __name__ == "__main__":

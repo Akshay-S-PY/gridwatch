@@ -354,10 +354,13 @@ with col_fc:
         figf.add_trace(go.Scatter(x=fcdf["timestamp"], y=fcdf["forecast_value"],
                                   name="Prophet (ours)",
                                   line=dict(color="#ff7f0e", width=2, dash="dash")))
-    # official National Grid forward forecast — the accuracy benchmark
+    # official National Grid forward forecast — the accuracy benchmark. Trim to a
+    # near-term window so it stays comparable to our 2h line (the full 48h curve
+    # lives in the "clean windows" panel).
     apidf = pd.DataFrame(api_fc)
     if not apidf.empty:
         apidf["timestamp"] = pd.to_datetime(apidf["timestamp"])
+        apidf = apidf.head(12)   # next ~6 hours
         figf.add_trace(go.Scatter(x=apidf["timestamp"], y=apidf["forecast_value"],
                                   name="Official (National Grid)",
                                   line=dict(color="#10b981", width=2)))
