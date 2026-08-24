@@ -181,7 +181,7 @@ def grid_forecast(
 
 @app.get("/api/anomalies")
 def anomaly_history(
-    limit: int = Query(default=20, ge=1, le=100)
+    limit: int = Query(default=20, ge=1, le=500)
 ):
     """
     Recent anomaly flags from the ML layer (Phase 3).
