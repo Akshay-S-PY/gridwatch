@@ -47,6 +47,12 @@ TABLE frequency_readings  -- grid frequency (Elexon/BMRS), one snapshot per 30-m
   timestamp     TIMESTAMPTZ  -- reading time
   frequency_hz  FLOAT        -- grid frequency in Hz (nominal 50.0; healthy 49.8-50.2)
 
+TABLE interconnector_flows  -- power flows on GB interconnectors (Elexon/BMRS)
+  timestamp   TIMESTAMPTZ  -- settlement period start
+  name        TEXT         -- interconnector code (INTFR, INTIFA2, INTNED, INTNSL, ...)
+  country     TEXT         -- connecting country (France, Netherlands, Norway, Belgium, Ireland, Denmark)
+  flow_mw     FLOAT        -- MW; POSITIVE = importing into GB, NEGATIVE = exporting from GB
+
 TABLE forecasts  -- forward-looking forecasts
   timestamp       TIMESTAMPTZ
   signal          TEXT   -- 'carbon_intensity' (from carbon_api), or 'intensity_actual'/'wind_perc'/'solar_perc'/'renewable_perc' (prophet)

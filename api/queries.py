@@ -288,6 +288,25 @@ def get_frequency() -> dict:
     return dict(row) if row else {}
 
 
+def get_interconnectors() -> dict:
+    """
+    Latest interconnector flows aggregated by country (+ = importing into GB,
+    - = exporting). From Elexon/BMRS.
+    """
+    with SessionLocal() as session:
+        ts = session.execute(
+            text("SELECT MAX(timestamp) FROM interconnector_flows")
+        ).scalar()
+        rows = [dict(r) for r in session.execute(text("""
+            SELECT country, SUM(flow_mw) AS flow_mw
+            FROM interconnector_flows
+            WHERE timestamp = (SELECT MAX(timestamp) FROM interconnector_flows)
+            GROUP BY country
+            ORDER BY SUM(flow_mw) DESC
+        """)).mappings().fetchall()]
+    return {"timestamp": ts, "net_mw": sum(r["flow_mw"] or 0 for r in rows), "data": rows}
+
+
 def get_anomaly_history(limit: int = 20) -> list[dict]:
     """Recent anomaly flags — used by dashboard alert panel and NL query layer."""
     sql = text("""

@@ -74,6 +74,22 @@ def write_demand(records: list[dict]) -> int:
         return result.rowcount
 
 
+def write_interconnectors(records: list[dict]) -> int:
+    """Interconnector flow rows (Elexon). Idempotent on (timestamp, name)."""
+    if not records:
+        return 0
+    sql = text("""
+        INSERT INTO interconnector_flows (timestamp, name, country, flow_mw)
+        VALUES (:timestamp, :name, :country, :flow_mw)
+        ON CONFLICT (timestamp, name) DO NOTHING
+    """)
+    with SessionLocal() as session:
+        result = session.execute(sql, records)
+        session.commit()
+        logger.info(f"Interconnectors: inserted {result.rowcount}/{len(records)} rows")
+        return result.rowcount
+
+
 def write_frequency(record: dict) -> int:
     """A single grid-frequency snapshot. Idempotent on timestamp."""
     if not record:

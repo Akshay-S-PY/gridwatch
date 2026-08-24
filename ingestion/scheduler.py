@@ -18,7 +18,7 @@ from ingestion.weather_client import WeatherClient
 from ingestion.elexon_client import ElexonClient
 from ingestion.writer import (
     write_grid_events, write_weather, write_regional, write_forecasts,
-    write_demand, write_frequency,
+    write_demand, write_frequency, write_interconnectors,
 )
 from ml.anomaly import AnomalyDetector
 from ml.detect import run_detection, seed_history_if_empty
@@ -116,6 +116,7 @@ def poll_live() -> None:
         #    the first poll; frequency stores one snapshot per poll.
         write_demand(elexon.get_demand())
         write_frequency(elexon.get_latest_frequency())
+        write_interconnectors(elexon.get_interconnectors())
 
     except Exception as e:
         logger.error(f"Live poll failed: {e}", exc_info=True)

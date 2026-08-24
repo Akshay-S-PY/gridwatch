@@ -20,6 +20,7 @@ from api.queries import (
     get_forecast,
     get_demand,
     get_frequency,
+    get_interconnectors,
     get_anomaly_history,
     check_data_quality,
 )
@@ -199,6 +200,12 @@ def grid_demand(hours: int = Query(default=24, ge=1, le=168)):
 def grid_frequency():
     """Most recent grid frequency (Hz)."""
     return get_frequency()
+
+
+@app.get("/api/grid/interconnectors")
+def grid_interconnectors():
+    """Latest interconnector flows by country (+ import to GB, - export)."""
+    return get_interconnectors()
 
 
 # ─── Natural-language query layer ─────────────────────────────────────────────

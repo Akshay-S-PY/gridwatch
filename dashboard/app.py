@@ -399,6 +399,30 @@ with col_map:
 
 st.divider()
 
+# ── interconnector flows (Elexon/BMRS) ───────────────────────────────────────
+st.subheader("🔌 Interconnector flows")
+st.markdown("<div class='gw-hint'>Live power across GB's subsea cables — 🟢 importing into GB, "
+            "🔴 exporting. From Elexon/BMRS.</div>", unsafe_allow_html=True)
+inter = api_get("/api/grid/interconnectors") or {}
+idata = inter.get("data", [])
+if idata:
+    idf = pd.DataFrame(idata).sort_values("flow_mw")
+    colors = ["#059669" if (v or 0) >= 0 else "#dc2626" for v in idf["flow_mw"]]
+    fig_i = go.Figure(go.Bar(
+        x=idf["flow_mw"], y=idf["country"], orientation="h",
+        marker_color=colors,
+        text=[f"{(v or 0):+,.0f} MW" for v in idf["flow_mw"]], textposition="outside",
+    ))
+    fig_i.update_layout(height=260, margin=dict(t=10, b=10, l=10, r=60),
+                        xaxis_title="MW  (+ importing · − exporting)")
+    st.plotly_chart(fig_i, use_container_width=True)
+    net = inter.get("net_mw", 0) / 1000
+    st.caption(f"Net position: GB is **{'importing' if net >= 0 else 'exporting'} {abs(net):.1f} GW** right now.")
+else:
+    st.info("Interconnector data not available yet.")
+
+st.divider()
+
 # ── clean windows + alerts ───────────────────────────────────────────────────
 col_cw, col_al = st.columns([1, 1])
 

@@ -89,6 +89,14 @@ CREATE TABLE IF NOT EXISTS frequency_readings (
     created_at          TIMESTAMPTZ     DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS interconnector_flows (
+    timestamp           TIMESTAMPTZ     NOT NULL,   -- settlement period start
+    name                TEXT            NOT NULL,   -- interconnector code (INTFR, INTNED, ...)
+    country             TEXT,                       -- connecting country
+    flow_mw             FLOAT,                      -- + import to GB, - export
+    created_at          TIMESTAMPTZ     DEFAULT NOW()
+);
+
 -- ─── Indexes ────────────────────────────────────────────────────────────────
 
 CREATE INDEX IF NOT EXISTS idx_grid_events_timestamp
@@ -116,6 +124,7 @@ SELECT create_hypertable('anomaly_flags',  'timestamp', if_not_exists => TRUE);
 SELECT create_hypertable('forecasts',      'timestamp', if_not_exists => TRUE);
 SELECT create_hypertable('demand_readings','timestamp', if_not_exists => TRUE);
 SELECT create_hypertable('frequency_readings','timestamp', if_not_exists => TRUE);
+SELECT create_hypertable('interconnector_flows','timestamp', if_not_exists => TRUE);
 """
 
 # Remove any pre-existing duplicates (from before unique indexes existed) so the
@@ -151,6 +160,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_demand_timestamp
     ON demand_readings (timestamp);
 CREATE UNIQUE INDEX IF NOT EXISTS uq_frequency_timestamp
     ON frequency_readings (timestamp);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_interconnector_timestamp_name
+    ON interconnector_flows (timestamp, name);
 """
 
 # Time-series lifecycle policies (TimescaleDB background jobs):
@@ -165,6 +176,7 @@ ALTER TABLE regional_readings SET (timescaledb.compress, timescaledb.compress_se
 ALTER TABLE anomaly_flags     SET (timescaledb.compress, timescaledb.compress_segmentby = 'signal', timescaledb.compress_orderby = 'timestamp DESC');
 ALTER TABLE demand_readings    SET (timescaledb.compress, timescaledb.compress_orderby = 'timestamp DESC');
 ALTER TABLE frequency_readings SET (timescaledb.compress, timescaledb.compress_orderby = 'timestamp DESC');
+ALTER TABLE interconnector_flows SET (timescaledb.compress, timescaledb.compress_segmentby = 'name', timescaledb.compress_orderby = 'timestamp DESC');
 
 SELECT add_compression_policy('grid_events',       INTERVAL '7 days', if_not_exists => TRUE);
 SELECT add_compression_policy('weather_readings',  INTERVAL '7 days', if_not_exists => TRUE);
@@ -172,6 +184,7 @@ SELECT add_compression_policy('regional_readings', INTERVAL '7 days', if_not_exi
 SELECT add_compression_policy('anomaly_flags',     INTERVAL '7 days', if_not_exists => TRUE);
 SELECT add_compression_policy('demand_readings',   INTERVAL '7 days', if_not_exists => TRUE);
 SELECT add_compression_policy('frequency_readings',INTERVAL '7 days', if_not_exists => TRUE);
+SELECT add_compression_policy('interconnector_flows',INTERVAL '7 days', if_not_exists => TRUE);
 
 SELECT add_retention_policy('grid_events',       INTERVAL '180 days', if_not_exists => TRUE);
 SELECT add_retention_policy('weather_readings',  INTERVAL '180 days', if_not_exists => TRUE);
@@ -180,6 +193,7 @@ SELECT add_retention_policy('anomaly_flags',     INTERVAL '180 days', if_not_exi
 SELECT add_retention_policy('forecasts',         INTERVAL '180 days', if_not_exists => TRUE);
 SELECT add_retention_policy('demand_readings',   INTERVAL '180 days', if_not_exists => TRUE);
 SELECT add_retention_policy('frequency_readings',INTERVAL '180 days', if_not_exists => TRUE);
+SELECT add_retention_policy('interconnector_flows',INTERVAL '180 days', if_not_exists => TRUE);
 """
 
 def init_db() -> None:

@@ -15,6 +15,15 @@ logger = logging.getLogger(__name__)
 BASE_URL = "https://data.elexon.co.uk/bmrs/api/v1"
 TIMEOUT = 30.0
 
+# GB interconnector codes -> the country they connect to. Positive flow = import
+# into GB, negative = export. Unknown INT* codes fall back to "Other".
+INTERCONNECTORS = {
+    "INTFR": "France", "INTIFA2": "France", "INTELEC": "France",
+    "INTNED": "Netherlands", "INTNEM": "Belgium",
+    "INTEW": "Ireland", "INTGRNL": "Ireland", "INTIRL": "Ireland",
+    "INTNSL": "Norway", "INTVKL": "Denmark",
+}
+
 
 def _iso(dt: datetime) -> str:
     return dt.strftime("%Y-%m-%dT%H:%MZ")
@@ -56,6 +65,29 @@ class ElexonClient:
                 "timestamp": d["startTime"],
                 "demand_mw": d["initialDemandOutturn"],
             })
+        return rows
+
+    def get_interconnectors(self) -> list[dict]:
+        """
+        Interconnector flows (MW) per settlement period from the generation
+        summary (~1 day window). One row per interconnector per period;
+        positive = importing into GB, negative = exporting.
+        """
+        resp = self.client.get("/generation/outturn/summary")
+        resp.raise_for_status()
+        rows = []
+        for period in resp.json():
+            ts = period.get("startTime")
+            for fuel in period.get("data", []):
+                code = fuel.get("fuelType", "")
+                if not code.startswith("INT"):
+                    continue
+                rows.append({
+                    "timestamp": ts,
+                    "name": code,
+                    "country": INTERCONNECTORS.get(code, "Other"),
+                    "flow_mw": fuel.get("generation"),
+                })
         return rows
 
     def close(self):
